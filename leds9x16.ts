@@ -25,10 +25,10 @@ enum Plots {
 //% blockGap=8
 namespace leds9x16 {
 
-    const SCREEN_WIDTH = 16
-    const SCREEN_HEIGHT = 6
-    const VIRTUAL_WIDTH = 17
-    const VIRTUAL_HEIGHT = 7
+    const SCREEN_WIDTH = 15
+    const SCREEN_HEIGHT = 8
+    const VIRTUAL_WIDTH = 16
+    const VIRTUAL_HEIGHT = 9
     const I2C_ADDR: number = 0x74
     const REG_MODE: number = 0x00
     const REG_FRAME: number = 0x01
@@ -41,13 +41,10 @@ namespace leds9x16 {
     const PIC_MODE: number = 0x00
     const CMD_REG: number = 0xfd
     const BANK_CONFIG: number = 0x0b
-    const COL_MAP = hex`100E0C0A080604020001030507090B0D0F11`
-    const COL_ORDER = hex`0809070A060B050C040D030E020F01100011`
-    const TWOS = hex`0102040810204080`
-    const BOX_FILL = hex`0103070f1f3f7fff`
-    const RECT_FILL = hex`0103050911214181`
-    const REVERSE = hex`0040206010503070084828681858387804442464145434740c4c2c6c1c5c3c7c02422262125232720a4a2a6a1a5a3a7a06462666165636760e4e2e6e1e5e3e7e0141216111513171094929691959397905452565155535750d4d2d6d1d5d3d7d03432363135333730b4b2b6b1b5b3b7b07472767175737770f4f2f6f1f5f3f7f80C0A0E090D0B0F088C828E89858B8F884C4A4E494D4B4F48cCcAcEc9cDcBcFc82C2A2E292D2B2F28aCaAaEa9aDaBaFa86C6A6E696D6B6F68eCeAeEe9eDeBeFe81C1A1E191D1B1F189C9A9E999D9B9F985C5A5E595D5B5F58dCdAdEd9dDdBdFd83C3A3E393D3B3F38bCbAbEb9bDbBbFb87C7A7E797D7B7F78fCfAfEf9fDfBfFf`
-
+    const FILL_TO = hex`00000000000000000103070f1f3f7fff`
+    const FILL_X = hex`fffefcf8f0e0c0800000000000000000`
+    const FILL_X8 = hex`fffffffffffffffffffefcf8f0e0c080`
+    const TWOS = hex`0102040810204080010204081020408001020408102040800102040810204080`
     const ARROWOFFSET: number = 40
     const ICONS: string[] = [
         "Heart", "SmallH", "Yes", "No", "Happy",
@@ -103,33 +100,34 @@ namespace leds9x16 {
     /**
      * Set or clearpixel (x,y).
      * LED matrix is not updated until a show() or showColumn()
-     * @param x - column to set (0,17)
-     * @param y - row to set (0,7)
+     * @param x - column to set (0,15)
+     * @param y - row to set (0,8)
      * @param state - on/off state
      */
     //% block="pixel at x %x y %y $state"
     //% state.shadow="toggleOnOff" state.defl=true
     //% inlineInputMode=inline
     export function framePixel(x: number, y: number, state: boolean): void {
-        if (x > VIRTUAL_WIDTH) { return }
-        if (y > VIRTUAL_HEIGHT) { return }
+        if (x > 15) { return }
+        if (y > 8) { return }
         if ((x | y) < 0) { return }
+        y <<= 1
+        if (x > 7) y++
         if (state) {
-            p_buffer[x] = p_buffer[x] | TWOS[y]
+            p_buffer[y] = p_buffer[y] | TWOS[x]
         } else {
-            let bitmask = ~TWOS[y]
-            p_buffer[x] = p_buffer[x] & bitmask
-            b_buffer[x] = b_buffer[x] & bitmask
+            let bitmask = ~TWOS[x]
+            p_buffer[y] = p_buffer[y] & bitmask
+            b_buffer[y] = b_buffer[y] & bitmask
         }
     }
-
 
     /**
       * Set or clear blink for pixel (x,y).
       * LED matrix is not updated until a show() or showColumn()
       * Requires blink mode - see setBlinkMode()
-      * @param x - column to set (0,17)
-      * @param y - row to set (0,7)
+      * @param x - column to set (0,15)
+      * @param y - row to set (0,8)
       * @param blink - on/off blink state
       */
     //% blockID=leds9x16_frame_blink
@@ -137,23 +135,25 @@ namespace leds9x16 {
     //% blink.shadow="toggleOnOff" blink.defl=false
     //% inlineInputMode=inline
     export function frameBlink(x: number, y: number, blink: boolean): void {
-        if (x > VIRTUAL_WIDTH) { return }
-        if (y > VIRTUAL_HEIGHT) { return }
+        if (x > 15) { return }
+        if (y > 8) { return }
         if ((x | y) < 0) { return }
+        y <<= 1
+        if (x > 7) y++
         if (blink) {
-            b_buffer[x] = b_buffer[x] | TWOS[y]
+            b_buffer[y] = b_buffer[y] | TWOS[x]
         } else {
-            b_buffer[x] = b_buffer[x] & ~TWOS[y]
+            b_buffer[y] = b_buffer[y] & ~TWOS[x]
         }
     }
 
     /**
       * Plot line/box/rectangle between points (x0,y0) (x1,y1)
       * @param plot - plot type: 0 = line, 1 = box, 2 = rectangle
-      * @param x0 - column  (0,17)
-      * @param y0 - row (0,7)
-      * @param x1 - column  (0,17)
-      * @param y1 - row (0,7)
+      * @param x0 - column  (0,15)
+      * @param y0 - row (0,8)
+      * @param x1 - column  (0,15)
+      * @param y1 - row (0,8)
       * @param state - on/off state (draw/undraw)
       */
     //% blockId=leds9x16_frame_plot
@@ -177,22 +177,34 @@ namespace leds9x16 {
     //% block="scroll scroll:bit %direction=dir_conv"
     export function frameScroll(direction: number): void {
         if (direction & 1) {
-            let dir = 1 - (direction & 2)
+            if (direction & 2) {
+                for (let i = 0; i < 18; i = i + 2) {
+                    p_buffer[i] >>= 1
+                    if (p_buffer[i + 1] & 1) { p_buffer[i] |= 0x80 }
+                    p_buffer[i + 1] >>= 1
+                }
+                if (useBlink) {
+                    b_buffer[i] >>= 1
+                    if (b_buffer[i + 1] & 1) { b_buffer[i] |= 0x80 }
+                    b_buffer[i + 1] >>= 1
+                }
+            } else {
+                for (let i = 0; i < 18; i = i + 2) {
+                    p_buffer[i + 1] <<= 1
+                    if (p_buffer[i] & 0x80) { p_buffer[i + 1] |= 1 }
+                    p_buffer[i] <<= 1
+                }
+                if (useBlink) {
+                    b_buffer[i + 1] <<= 1
+                    if (b_buffer[i] & 0x80) { b_buffer[i + 1] |= 1 }
+                    b_buffer[i] <<= 1
+                }
+            }
+        } else {
+            let dir = (1 - (direction & 2)) << 1
             p_buffer.shift(dir)
             if (useBlink) {
                 b_buffer.shift(dir)
-            }
-        } else {
-            if (direction & 2) {
-                for (let i = 0; i < 18; i++) { p_buffer[i] <<= 1 }
-                if (useBlink) {
-                    for (let i = 0; i < 18; i++) { b_buffer[i] <<= 1 }
-                }
-            } else {
-                for (let i = 0; i < 18; i++) { p_buffer[i] >>= 1 }
-                if (useBlink) {
-                    for (let i = 0; i < 18; i++) { b_buffer[i] >>= 1 }
-                }
             }
         }
     }
@@ -230,10 +242,12 @@ namespace leds9x16 {
     //% x.min=0 y.min=0
     //% inlineInputMode=inline
     export function frameIsPixel(x: number, y: number): boolean {
-        if (y > VIRTUAL_HEIGHT) { return false }
-        if (x > VIRTUAL_WIDTH) { return false }
+        if (y > 8) { return false }
+        if (x > 15) { return false }
         if ((x | y) < 0) { return false }
-        return ((p_buffer[x] & TWOS[y]) != 0)
+        y <<= 1
+        if (x > 7) y++
+        return ((p_buffer[y] & TWOS[x]) != 0)
     }
 
     /**
@@ -242,7 +256,7 @@ namespace leds9x16 {
     //% blockId=leds9x16_frame_max_x
     //% block="max X of scroll:bit"
     export function frameWidth(): number {
-        return SCREEN_WIDTH
+        return 15
     }
     /**
       * Return the maximum y coordinate
@@ -251,7 +265,7 @@ namespace leds9x16 {
     //% block="max Y of scroll:bit"
     //% blockGap=40
     export function frameHeight(): number {
-        return SCREEN_HEIGHT
+        return 8
     }
 
 
@@ -261,12 +275,12 @@ namespace leds9x16 {
      * Preseves and restores existing display contents.
      * @param text - text to scroll
      * @param delay - scroll delay in ms
-     * @param y - vertical offset [0-2]
+     * @param y - vertical offset [0-3]
      */
     //% blockId=leds9x16_scroll_text 
     //% block="scroll string %text delay (ms) %delay y %y"
     //% delay.min=0 delay.max=100 delay.defl=50
-    //% y.min=0 y.max=2 y.defl=1
+    //% y.min=0 y.max=3 y.defl=1
     //% color=#0303c3
     export function scrollText(text: string, delay: number = 50, y: number = 1) {
         p_buffer = textbuffer
@@ -275,9 +289,9 @@ namespace leds9x16 {
         setDisplayFrame(7)
         text = tokenize(text)
         let len: number = measureText(text)
-        for (let x = 0; x < len + SCREEN_WIDTH; x++) {
+        for (let x = 0; x < len + 16; x++) {
             frameClear()
-            _drawText(text, SCREEN_WIDTH - x, y)
+            _drawText(text, 16 - x, y)
             show()
             if (delay > 0) {
                 control.waitMicros(delay * 1000)
@@ -293,11 +307,11 @@ namespace leds9x16 {
       * Draw a single alphanumeric character  - requires show().
       * @param char - character to display
       * @param x - column position (0-16)
-      * @param y - vertical offset [0-2]
+      * @param y - vertical offset [0-3]
       */
     //% blockId=leds9x16_draw_char
     //% block="draw char %char at x %x y %y"
-    //% y.min=0 y.max=2 y.defl=1
+    //% y.min=0 y.max=3 y.defl=1
     //% color=#0303c3
     export function drawChar(char: string, x: number, y: number = 1): void {
         let width = _drawChar(char, x, y)
@@ -307,7 +321,7 @@ namespace leds9x16 {
     export function _drawText(text: string, x: number, y: number = 1): void {
         let offset_x: number = 0
         for (let i: number = 0; i < text.length; i++) {
-            if (x + offset_x > SCREEN_WIDTH) {
+            if (x + offset_x > 15) {
                 return
             }
             let width = _drawChar(text.charAt(i), x + offset_x, y)
@@ -328,7 +342,7 @@ namespace leds9x16 {
             return 5;
         }
         let data: Buffer = getChar(char)
-        y = Math.constrain(y, 0, 2)
+        y = Math.constrain(y, 0, 3)
         let charWidth = 0
         let mask = 0x10
         let letter: boolean = false
@@ -343,7 +357,7 @@ namespace leds9x16 {
             letter = letter || (bits > 0)
             if ((bits != 0) || ((bit_col > 1) && !(letter))) {
                 let column = x + charWidth
-                if ((column <= SCREEN_WIDTH) && (column >= 0)) {
+                if ((column < 16) && (column >= 0)) {
                     p_buffer[column] = bits
                     b_buffer[column] = 0
                 }
@@ -358,11 +372,11 @@ namespace leds9x16 {
      * Draw text string - requires show()
      * @param text - text to show
      * @param x - column (0-16)
-     * @param y - vertical offset [0-2]
+     * @param y - vertical offset [0-3]
      */
     //% blockId=leds9x16_draw_text
     //% block="draw string %text at x %x y %y"
-    //% x.min=0 x.max=16 y.min=0 y.max=2 y.defl=1
+    //% x.min=0 x.max=16 y.min=0 y.max=3 y.defl=1
     //% color=#0303c3
     export function drawText(text: string, x: number, y: number = 1): void {
         text = tokenize(text)
@@ -396,15 +410,15 @@ namespace leds9x16 {
     /**
      * Display an icon on scroll:bit
      * @param icon - icon to display
-     * @param x - column to set (0-16)
-     * @param y - row to set (0-6)
+     * @param x - column to set (0-15)
+     * @param y - row to set (086)
      */
     //% blockId=leds9x16_set_icon
     //% block="draw icon %icon at x %x y %y"
     //% icon.fieldEditor="gridpicker"
     //% icon.fieldOptions.width="400" icon.fieldOptions.columns="5"
     //% icon.fieldOptions.itemColour="black" icon.fieldOptions.tooltips="true"
-    //% x.min=0 x.max=16 y.min=0 y.max=6
+    //% x.min=0 x.max=15 y.min=0 y.max=8
     //% color=#0303c3
     export function setIcon(icon: IconNames, x: number, y: number): void {
         let image: Image = images.iconImage(icon)
@@ -414,12 +428,12 @@ namespace leds9x16 {
     /**
      * Display an image on scroll:bit
      * @param image - image to display
-     * @param x - column to set (0-16)
-     * @param y - row to set (0-6)
+     * @param x - column to set (0-15)
+     * @param y - row to set (0-8)
      */
     //% blockId=leds9x16_set_image
     //% block="draw 5x5 image %image at |x %x |y %y"
-    //% x.min=0 x.max=16 y.min=0 y.max=6
+    //% x.min=0 x.max=15 y.min=0 y.max=8
     //% color=#0303c3
     export function setImage(image: Image, x: number, y: number): void {
         for (let row = 0; row < 5; row++) {
@@ -436,16 +450,16 @@ namespace leds9x16 {
     //% block="draw 17x7 image %image"
     //% color=#0303c3
     export function setFullImage(image: Image): void {
-        for (let col = 0; col < 17; col++) {
-            let bits = 0x00
-            for (let row = 0; row < 7; row++) {
-                if (image.pixel(col, row)) {
-                    bits |= 0x80
+        for (let buf = 0; buf < 18; buf++) {
+            b_buffer[buf] = 0
+            p_buffer[buf] = 0
+            for (let col = 0; col < 7; col++) {
+                let x = (buf > 8) ? col + 8 : col
+                let y = (buf > 8) ? buf - 9 : buf
+                if (image.pixel(x, y)) {
+                    p_buffer[buf] |= TWOS[x]
                 }
-                bits >>= 1
             }
-            p_buffer[col] = bits
-            b_buffer[col] = 0
         }
     }
 
@@ -619,13 +633,15 @@ namespace leds9x16 {
         return wfMaxY
     }
 
-    //% blockID=leds9x16_maskcolumn
-    //% block="mask column %x : AND %maskand OR %maskor"
+    //% blockID=leds9x16_mask_row
+    //% block="mask row %x : AND %maskand OR %maskor"
     //% advanced=true color=#070373
-    export function maskColumn(x: number, maskand: number, maskor: number): void {
-        if (x < 0) { return }
-        if (x > VIRTUAL_WIDTH) { return }
-        p_buffer[x] = (p_buffer[x] & maskand) | maskor
+    export function maskRow(y: number, maskand: number, maskor: number): void {
+        if (y < 0) { return }
+        if (y > VIRTUAL_HEIGHT) { return }
+        y <<= 1
+        p_buffer[y] = (p_buffer[y] & maskand) | maskor
+        p_buffer[y + 1] = 0xff & (p_buffer[y + 1] & (maskand >> 8)) | (maskor >> 8)
     }
 
 
@@ -686,18 +702,18 @@ namespace leds9x16 {
     /**
      * Update one column of pixels on LED matrix.
      * Useful for speed if full-screen show() is not requied
-     * @param x - column (0-17)
+     * @param y - row (0-8)
      */
     //% blockId=leds9x16_frame_show_column
     //% block="show scroll:bit column %x"
     //% advanced=true
-    export function frameShowColumn(x: number): void {
+    export function frameShowRow(y: number): void {
         if (useWorld) { return }
-        if (x < 0) { return }
-        if (x > VIRTUAL_WIDTH) { return }
-        writeColumnByte(x, p_buffer[x])
+        if (y < 0) { return }
+        if (y > VIRTUAL_HEIGHT) { return }
+        writeRow(y)
         if (useBlink) {
-            writeColumnByte(x, b_buffer[x], 18)
+            writeRowBlink(y)
         }
     }
     /**
@@ -837,16 +853,32 @@ namespace leds9x16 {
     }
 
 
-    function writeColumnByte(col: number, value: number, register: number = 0): void {
-        let temp = pins.createBuffer(2);
-        temp[0] = COL_MAP[col] + register;
-        if (col > 8) {
-            temp[1] = value;
-        } else {
-            temp[1] = REVERSE[value]
-        }
+    function writeRowData(row: number, value: number, register: number = 0): void {
+        let temp = pins.createBuffer(3);
+        temp[0] = register;
+        row <<= 1
+        temp[1] = value & 0x00ff
+        temp[2] = (value & 0xff00) >> 8
         pins.i2cWriteBuffer(I2C_ADDR, temp, false);
     }
+
+    function writeRow(row: number, register: number = 0): void {
+        let temp = pins.createBuffer(3);
+        temp[0] = register;
+        row <<= 1
+        temp[1] = p_buffer[row]
+        temp[2] = p_buffer[row + 1]
+        pins.i2cWriteBuffer(I2C_ADDR, temp, false);
+    }
+    function writeRowBlink(row: number, ): void {
+        let temp = pins.createBuffer(3)
+        temp[0] = 18
+        row <<= 1
+        temp[1] = b_buffer[row]
+        temp[2] = b_buffer[row + 1]
+        pins.i2cWriteBuffer(I2C_ADDR, temp, false);
+    }
+
     function plotLine(x0: number, y0: number, x1: number, y1: number, state: boolean): void {
         let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0)
         let x = x0, y = y0
@@ -902,50 +934,25 @@ namespace leds9x16 {
         }
     }
     function plotBox(x0: number, y0: number, x1: number, y1: number, state: boolean): void {
-        if ((x0 & x1) < 0) { return }
-        let bitmask = maskLineFill(y0, y1)
         let x = x0
         if (x1 < x0) { x = x1; x1 = x0 }
-        for (; x <= x1; x++) {
-            if ((x >= 0) && (x < VIRTUAL_WIDTH)) {
-                if (state) { p_buffer[x] |= bitmask }
-                else { p_buffer[x] &= ~bitmask }
-            }
+        let y = y0
+        if (y1 < y0) { y = y1; y1 = y0 }
+        if ((y1 & x1) < 0) { return }
+        if (x < 0) x = 0
+        if (y < 0) y = 0
+        if (x1 > 15) x1 = 15
+        if (y1 > 8) y1 = 8
+        let bitmask0 = FILL_X[x]
+        if (x1 < 8) bitmask0 &= FILL_X[x1]
+        let bitmask1 = FILL_X8[x] & FILL_TO[x1]
+        for (; y <= y1; y++) {
+            p_buffer[y << 1] = bitmask0
+            p_buffer[1 + (y << 1)] = bitmask1
         }
     }
     function plotRect(x0: number, y0: number, x1: number, y1: number, state: boolean): void {
         if ((x0 & x1) < 0) { return }
-        let bitmaskF = maskLineFill(y0, y1)
-        let bitmaskE = maskLineEmpty(y0, y1)
-        let x = x0
-        if (x1 < x0) { x = x1; x1 = x0; x0 = x }
-        for (; x <= x1; x++) {
-            if ((x >= 0) && (x < VIRTUAL_WIDTH)) {
-                if ((x == x0) || (x == x1)) {
-                    if (state) { p_buffer[x] |= bitmaskF }
-                    else { p_buffer[x] &= ~bitmaskF }
-                } else {
-                    if (state) { p_buffer[x] |= bitmaskE }
-                    else { p_buffer[x] &= ~bitmaskE }
-                }
-            }
-        }
-    }
-    function maskLineFill(y0: number, y1: number): number {
-        if ((y0 & y1) < 0) { return 0 }
-        let yh = y1, yl = y0
-        if (y1 < y0) { yh = y0, yl = y1 }
-        if (yh > 7) { yh = 7 }
-        if ((y0 | y1) < 0) { return BOX_FILL[yh] }
-        return BOX_FILL[yh - yl] << yl
-    }
-    function maskLineEmpty(y0: number, y1: number): number {
-        if ((y0 & y1) < 0) { return 0 }
-        let yh = y1, yl = y0
-        if (y1 < y0) { yh = y0, yl = y1 }
-        if (yh > 7) { yh = 7 }
-        if ((y0 | y1) < 0) { return TWOS[yh] }
-        return RECT_FILL[yh - yl] << yl
     }
     function plotWorldBox(x0: number, y0: number, x1: number, y1: number, state: boolean): void {
         let yy = y1
@@ -968,55 +975,34 @@ namespace leds9x16 {
         let offset = worldWidth * y_high + worldFrameX
         if (useWorldOverlay) {
             for (let i = 0; i < 17; i++) {
-                let mappedCol = COL_ORDER[i]
-                let a = worldbuffer[mappedCol + offset] >> y_low
-                let b = worldbuffer[mappedCol + offset + worldWidth] << (8 - y_low)
-                let byte = (p_buffer[mappedCol] | a | b) & 0x7f
-                if (mappedCol > 8) {
-                    temp[i + 1] = byte
-                } else {
-                    temp[i + 1] = REVERSE[byte]
-                }
+                let a = worldbuffer[i + offset] >> y_low
+                let b = worldbuffer[i + offset + worldWidth] << (8 - y_low)
+                let byte = (p_buffer[i] | a | b) & 0x7f
+                temp[i + 1] = byte
             }
         } else {
             for (let i = 0; i < 17; i++) {
-                let mappedCol = COL_ORDER[i]
-                let a = worldbuffer[mappedCol + offset] >> y_low
-                let b = worldbuffer[mappedCol + offset + worldWidth] << (8 - y_low)
-                if (mappedCol > 8) {
-                    temp[i + 1] = (a | b) & 0x7F
-                } else {
-                    temp[i + 1] = REVERSE[(a | b) & 0x7F]
-                }
+                let a = worldbuffer[i + offset] >> y_low
+                let b = worldbuffer[i + offset + worldWidth] << (8 - y_low)
+                temp[i + 1] = (a | b) & 0x7F
             }
         }
         pins.i2cWriteBuffer(I2C_ADDR, temp, false);
     }
     function showFrame() {
         if (!useBlink) {
-            let temp = pins.createBuffer(18)
+            let temp = pins.createBuffer(19)
             temp[0] = 0
-            for (let x = 0; x <= SCREEN_WIDTH; x++) {
-                let col = COL_ORDER[x]
-                if (col > 8) {
-                    temp[x + 1] = p_buffer[col]
-                } else {
-                    temp[x + 1] = REVERSE[p_buffer[col]]
-                }
+            for (let x = 0; x < 18; x++) {
+                temp[x + 1] = p_buffer[x]
             }
             pins.i2cWriteBuffer(I2C_ADDR, temp, false);
         } else {
             let temp = pins.createBuffer(37)
             temp[0] = 0
             for (let x = 0; x < 18; x++) {
-                let col = COL_ORDER[x]
-                if (col > 8) {
-                    temp[x + 1] = p_buffer[col]
-                    temp[x + 19] = b_buffer[col]
-                } else {
-                    temp[x + 1] = REVERSE[p_buffer[col]]
-                    temp[x + 19] = REVERSE[b_buffer[col]]
-                }
+                temp[x + 1] = p_buffer[x]
+                temp[x + 19] = b_buffer[x]
             }
             pins.i2cWriteBuffer(I2C_ADDR, temp, false);
         }
