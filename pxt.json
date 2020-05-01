@@ -1,0 +1,21 @@
+{
+    "name": "leds9x16",
+    "version": "0.0.7",
+    "description": "MTKilpatrick Leds9x16:Bit",
+    "license": "MIT",
+    "dependencies": {
+        "core": "*"
+    },
+    "files": [
+        "README.md",
+        "font.cpp",
+        "shims.d.ts",
+        "leds9x16.ts"
+    ],
+    "testFiles": [
+        "test.ts"
+    ],
+    "public": true,
+    "preferredEditor": "tsprj",
+    "installedVersion": "workspace:a4e416d1-b774-4226-4844-caa42598691b"
+}
