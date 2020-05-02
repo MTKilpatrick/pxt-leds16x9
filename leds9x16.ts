@@ -41,10 +41,11 @@ namespace leds9x16 {
     const PIC_MODE: number = 0x00
     const CMD_REG: number = 0xfd
     const BANK_CONFIG: number = 0x0b
-    const FILL_TO = hex`00000000000000000103070f1f3f7fff`
-    const FILL_X = hex`fffefcf8f0e0c0800000000000000000`
-    const FILL_X8 = hex`fffffffffffffffffffefcf8f0e0c080`
-    const TWOS = hex`0102040810204080010204081020408001020408102040800102040810204080`
+    const FILL_X = hex`fffffefcf8f0e0c080 0000000000000000000`
+    const FILL_B = hex`000000000000000000000103070f1f3f7fffff`
+    const FILL_R = hex`00010204081020408000000000000000000000`
+    const FILL_S = hex`00000000000000000001020408102040800000`
+    const TWOS = hex`01020408102040800102040810204080`
     const ARROWOFFSET: number = 40
     const ICONS: string[] = [
         "Heart", "SmallH", "Yes", "No", "Happy",
@@ -879,19 +880,45 @@ namespace leds9x16 {
         pins.i2cWriteBuffer(I2C_ADDR, temp, false);
     }
 
+    function andRowBytes(row: number, andlow: number, andhigh: number): void {
+        if (row < 0) { return }
+        if (row > 8) { return }
+        let r = row << 1
+        p_buffer[r] = p_buffer[r] & andlow
+        p_buffer[r + 1] = p_buffer[r + 1] & andhigh
+    }
+    function orRowBytes(row: number, orlow: number, orhigh: number): void {
+        if (row < 0) { return }
+        if (row > 8) { return }
+        let r = row << 1
+        p_buffer[r] = p_buffer[r] | orlow
+        p_buffer[r + 1] = p_buffer[r + 1] | orhigh
+    }
     function plotLine(x0: number, y0: number, x1: number, y1: number, state: boolean): void {
         let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0)
         let x = x0, y = y0
         if (dx > dy) {
             if (x0 > x1) { x = x1; y = y1; x1 = x0; y1 = y0 }
-            let yc = (y1 > y) ? 1 : -1
-            let mid = (x + x1) >> 1
-            let a = dy << 1, p = a - dx, b = p - dx
-            framePixel(x, y, state)
-            while (x < x1) {
-                if ((p < 0) || ((p == 0) && (x >= mid))) { p += a }
-                else { p = p + b; y += yc }
-                x++; framePixel(x, y, state)
+            if (dy == 0) {
+                if (x < 0) x = 0
+                if (x1 > 15) x1 = 15
+                let bitmaskF0 = FILL_X[x + 1] ^ FILL_X[x1 + 2]
+                let bitmaskF1 = FILL_B[x + 1] ^ FILL_B[x1 + 2]
+                if (state) {
+                    orRowBytes(y, bitmaskF0, bitmaskF1)
+                } else {
+                    andRowBytes(y, ~bitmaskF0, ~bitmaskF1)
+                }
+            } else {
+                let yc = (y1 > y) ? 1 : -1
+                let mid = (x + x1) >> 1
+                let a = dy << 1, p = a - dx, b = p - dx
+                framePixel(x, y, state)
+                while (x < x1) {
+                    if ((p < 0) || ((p == 0) && (x >= mid))) { p += a }
+                    else { p = p + b; y += yc }
+                    x++; framePixel(x, y, state)
+                }
             }
         } else {
             if (y0 > y1) { x = x1; y = y1; x1 = x0; y1 = y0 }
@@ -934,25 +961,45 @@ namespace leds9x16 {
         }
     }
     function plotBox(x0: number, y0: number, x1: number, y1: number, state: boolean): void {
-        let x = x0
+        let x = x0, y = y0
         if (x1 < x0) { x = x1; x1 = x0 }
-        let y = y0
         if (y1 < y0) { y = y1; y1 = y0 }
-        if ((y1 & x1) < 0) { return }
+        if ((y1 | x1) < 0) { return }
         if (x < 0) x = 0
-        if (y < 0) y = 0
         if (x1 > 15) x1 = 15
-        if (y1 > 8) y1 = 8
-        let bitmask0 = FILL_X[x]
-        if (x1 < 8) bitmask0 &= FILL_X[x1]
-        let bitmask1 = FILL_X8[x] & FILL_TO[x1]
+        let bitmaskF0 = FILL_X[x + 1] ^ FILL_X[x1 + 2]
+        let bitmaskF1 = FILL_B[x + 1] ^ FILL_B[x1 + 2]
         for (; y <= y1; y++) {
-            p_buffer[y << 1] = bitmask0
-            p_buffer[1 + (y << 1)] = bitmask1
+            if (state) {
+                orRowBytes(y, bitmaskF0, bitmaskF1)
+            } else {
+                andRowBytes(y, ~bitmaskF0, ~bitmaskF1)
+            }
         }
     }
     function plotRect(x0: number, y0: number, x1: number, y1: number, state: boolean): void {
-        if ((x0 & x1) < 0) { return }
+        let x = x0, y = y0
+        if (x1 < x0) { x = x1; x1 = x0 }
+        if (y1 < y0) { y = y1; y1 = y0 }
+        if ((y1 | x1) < 0) { return }
+        if (x < 0) x = -1
+        if (x1 > 15) x1 = 16
+        x++
+        let bitmaskF0 = FILL_X[x] ^ FILL_X[x1 + 2]
+        let bitmaskF1 = FILL_B[x] ^ FILL_B[x1 + 2]
+        let bitmaskE0 = FILL_R[x] | FILL_R[x1 + 1]
+        let bitmaskE1 = FILL_S[x] | FILL_S[x1 + 1]
+        if (state) {
+            orRowBytes(y, bitmaskF0, bitmaskF1)
+            orRowBytes(y1, bitmaskF0, bitmaskF1)
+            y++
+            for (; y < y1; y++) { orRowBytes(y, bitmaskE0, bitmaskE1) }
+        } else {
+            andRowBytes(y, ~bitmaskF0, ~bitmaskF1)
+            andRowBytes(y1, ~bitmaskF0, ~bitmaskF1)
+            y++
+            for (; y < y1; y++) { andRowBytes(y, ~bitmaskE0, ~bitmaskE1) }
+        }
     }
     function plotWorldBox(x0: number, y0: number, x1: number, y1: number, state: boolean): void {
         let yy = y1
