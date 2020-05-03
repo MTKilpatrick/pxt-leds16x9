@@ -1,6 +1,6 @@
 {
     "name": "leds9x16",
-    "version": "0.0.7",
+    "version": "1.1.0",
     "description": "MTKilpatrick Leds9x16:Bit",
     "license": "MIT",
     "dependencies": {

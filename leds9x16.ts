@@ -1036,6 +1036,14 @@ namespace leds9x16 {
             }
         }
         pins.i2cWriteBuffer(I2C_ADDR, temp, false);
+        if (useBlink) {
+            let temp2 = pins.createBuffer(19)
+            temp2[0] = 18
+            for (let x = 0; x < 18; x++) {
+                temp2[x + 1] = b_buffer[x]
+            }
+            pins.i2cWriteBuffer(I2C_ADDR, temp2, false);
+        }
     }
 
 
