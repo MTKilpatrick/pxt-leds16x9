@@ -1,2 +1,2 @@
-declare namespace leds9x16 {
+declare namespace leds16x9 {
 }
