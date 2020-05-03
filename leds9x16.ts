@@ -45,7 +45,7 @@ namespace leds9x16 {
     const FILL_B = hex`000000000000000000000103070f1f3f7fffff`
     const FILL_R = hex`00010204081020408000000000000000000000`
     const FILL_S = hex`00000000000000000001020408102040800000`
-    const TWOS = hex`01020408102040800102040810204080`
+    const TWOS = hex`0102040810204080010204081020408000`
     const ARROWOFFSET: number = 40
     const ICONS: string[] = [
         "Heart", "SmallH", "Yes", "No", "Happy",
@@ -75,10 +75,10 @@ namespace leds9x16 {
     // variables for window mode
     let worldbuffer: Buffer = pins.createBuffer(256)
     let useWorld: boolean = false
-    let useWorldOverlay: boolean = false
     let worldFrameX: number = 0
     let worldFrameY: number = 0
-    let worldExtent: number = 0
+    let worldSize: number = 0
+    let worldRowMult: number = 0
     let worldWidth: number = 0
     let worldHeight: number = 0
     let wfMaxX: number = 0
@@ -185,9 +185,11 @@ namespace leds9x16 {
                     p_buffer[i + 1] >>= 1
                 }
                 if (useBlink) {
-                    b_buffer[i] >>= 1
-                    if (b_buffer[i + 1] & 1) { b_buffer[i] |= 0x80 }
-                    b_buffer[i + 1] >>= 1
+                    for (let i = 0; i < 18; i = i + 2) {
+                        b_buffer[i] >>= 1
+                        if (b_buffer[i + 1] & 1) { b_buffer[i] |= 0x80 }
+                        b_buffer[i + 1] >>= 1
+                    }
                 }
             } else {
                 for (let i = 0; i < 18; i = i + 2) {
@@ -196,9 +198,11 @@ namespace leds9x16 {
                     p_buffer[i] <<= 1
                 }
                 if (useBlink) {
-                    b_buffer[i + 1] <<= 1
-                    if (b_buffer[i] & 0x80) { b_buffer[i + 1] |= 1 }
-                    b_buffer[i] <<= 1
+                    for (let i = 0; i < 18; i = i + 2) {
+                        b_buffer[i + 1] <<= 1
+                        if (b_buffer[i] & 0x80) { b_buffer[i + 1] |= 1 }
+                        b_buffer[i] <<= 1
+                    }
                 }
             }
         } else {
@@ -218,6 +222,18 @@ namespace leds9x16 {
     export function frameClear(): void {
         p_buffer.fill(0)
         b_buffer.fill(0)
+    }
+
+    /**
+     * Invert the display
+     * 
+     */
+    //% blockId=leds9x16_invert
+    //% block="invert display"
+    export function frameInvert(): void {
+        for (let i = 0; i < 18; i++) {
+            p_buffer[i] = ~p_buffer[i]
+        }
     }
     /**
      * Transfer pixel (and blink) buffers to LED display.
@@ -304,6 +320,7 @@ namespace leds9x16 {
         setDisplayFrame(0)
     }
 
+
     /**
       * Draw a single alphanumeric character  - requires show().
       * @param char - character to display
@@ -327,7 +344,9 @@ namespace leds9x16 {
             }
             let width = _drawChar(text.charAt(i), x + offset_x, y)
             if (i < text.length - 1) {
-                p_buffer[x + offset_x + width] = 0
+                for (let q = 0; q < 5; q++) {
+                    framePixel(x + offset_x + width, y + q, false)
+                }
             }
             offset_x += width + 1
         }
@@ -344,28 +363,15 @@ namespace leds9x16 {
         }
         let data: Buffer = getChar(char)
         y = Math.constrain(y, 0, 3)
-        let charWidth = 0
-        let mask = 0x10
-        let letter: boolean = false
-        for (let bit_col = 0; bit_col < 5; bit_col++) {
-            let bits = 0x00
-            bits |= ((data[4] & mask) != 0) ? 1 : 0; bits <<= 1
-            bits |= ((data[3] & mask) != 0) ? 1 : 0; bits <<= 1
-            bits |= ((data[2] & mask) != 0) ? 1 : 0; bits <<= 1
-            bits |= ((data[1] & mask) != 0) ? 1 : 0; bits <<= 1
-            bits |= ((data[0] & mask) != 0) ? 1 : 0; bits <<= y
-            mask >>= 1
-            letter = letter || (bits > 0)
-            if ((bits != 0) || ((bit_col > 1) && !(letter))) {
-                let column = x + charWidth
-                if ((column < 16) && (column >= 0)) {
-                    p_buffer[column] = bits
-                    b_buffer[column] = 0
-                }
-                charWidth += 1
+        let width = charWidth(char)
+        for (let row = 0; row < 5; row++) {
+            if (width < 0)
+                data[row] <<= 1
+            for (let col = 0; col < Math.abs(width); col++) {
+                framePixel(col + x, row + y, (data[row] & TWOS[4 - col]) != 0)
             }
         }
-        return charWidth
+        return Math.abs(width)
     }
 
 
@@ -465,28 +471,26 @@ namespace leds9x16 {
     }
 
 
-    //% block="world: create %x cols and %y rows | overlay $overlay"
-    //% overlay.shadow="toggleOnOff"
-    //% overlay.defl=false x.min=0 y.min=0
+    //% block="world: create %x cols and %y rows"
+    //% x.min=16 y.min=9
     //% advanced=true color=#4703c3
-    export function worldCreate(x: number, y: number, overlay: boolean = false): void {
+    export function worldCreate(x: number, y: number): void {
         worldWidth = x
         worldHeight = y
         useWorld = true
-        let byte_y = y >> 3
-        worldExtent = worldWidth * byte_y + x
-        if ((y & 0x07) != 0) { byte_y += 1 }
+        worldRowMult = (x + 7) >> 3
+        worldSize = worldHeight * worldRowMult
         if (worldbuffer.length !== 0) {
-            let tempbuf = pins.createBuffer(x * byte_y)
+            let tempbuf = pins.createBuffer(worldSize)
             worldbuffer = tempbuf
         } else {
-            worldbuffer = pins.createBuffer(x * byte_y)
+            worldbuffer = pins.createBuffer(worldSize)
         }
-        wfMaxX = worldWidth - VIRTUAL_WIDTH
-        wfMaxY = worldHeight - VIRTUAL_HEIGHT
+        worldbuffer.fill(0)
+        wfMaxX = worldWidth - 16
+        wfMaxY = worldHeight - 9
         worldFrameX = 0
         worldFrameY = 0
-        useWorldOverlay = overlay
     }
 
     //% block="world: delete"
@@ -497,7 +501,7 @@ namespace leds9x16 {
         if (worldbuffer.length !== 0) {
             worldbuffer.fill(0)
         }
-        worldExtent = 0; worldWidth = 0; worldHeight = 0;
+        worldSize = 0; worldWidth = 0; worldHeight = 0;
         wfMaxX = 0; wfMaxY = 0;
         frameClear()
         show()
@@ -511,10 +515,10 @@ namespace leds9x16 {
         if ((x | y) < 0) { return }
         if (x >= worldWidth) { return }
         if (y >= worldHeight) { return }
-        let y_low = y & 7
-        let y_high = y >> 3
-        let offset = worldWidth * y_high + x
-        let bitmask = TWOS[y_low]
+        let x_low = x & 7
+        let x_high = x >> 3
+        let offset = worldRowMult * y + x_high
+        let bitmask = TWOS[x_low]
         if (state) {
             worldbuffer[offset] |= bitmask
         } else {
@@ -583,13 +587,11 @@ namespace leds9x16 {
     //% inlineInputMode=inline
     //% advanced=true color=#4703c3
     export function worldIsPixel(x: number, y: number): boolean {
-        if (y >= worldWidth) { return false }
-        if (x >= worldHeight) { return false }
         if ((x | y) < 0) { return false }
-        let y_low = y & 7
-        let y_high = y >> 3
-        let offset = worldWidth * y_high + x
-        return (worldbuffer[offset] & TWOS[y_low]) != 0
+        if (x >= worldWidth) { return false }
+        if (y >= worldHeight) { return false }
+        let offset = worldRowMult * y + (x >> 3)
+        return (worldbuffer[offset] & TWOS[x & 7]) != 0
     }
 
     /**
@@ -756,7 +758,7 @@ namespace leds9x16 {
     export function measureText(text: string): number {
         let len: number = 0
         for (let i: number = 0; i < text.length; i++) {
-            len += charWidth(text.charAt(i)) + 1
+            len += Math.abs(charWidth(text.charAt(i)) + 1)
         }
         return len
     }
@@ -1015,27 +1017,28 @@ namespace leds9x16 {
         plotWorldLine(x1, y0, x1, y1, true)
     }
     function showWorld() {
-        let temp = pins.createBuffer(18)
+        let temp = pins.createBuffer(19)
         temp[0] = 0
-        let y_low = worldFrameY & 7
-        let y_high = worldFrameY >> 3
-        let offset = worldWidth * y_high + worldFrameX
-        if (useWorldOverlay) {
-            for (let i = 0; i < 17; i++) {
-                let a = worldbuffer[i + offset] >> y_low
-                let b = worldbuffer[i + offset + worldWidth] << (8 - y_low)
-                let byte = (p_buffer[i] | a | b) & 0x7f
-                temp[i + 1] = byte
-            }
-        } else {
-            for (let i = 0; i < 17; i++) {
-                let a = worldbuffer[i + offset] >> y_low
-                let b = worldbuffer[i + offset + worldWidth] << (8 - y_low)
-                temp[i + 1] = (a | b) & 0x7F
+        let x_low = worldFrameX & 7
+        let x_high = worldFrameX >> 3
+        let offset = x_high + worldRowMult * worldFrameY
+        for (let i = 0; i < 17; i = i + 2, offset = offset + worldRowMult) {
+            if (x_low == 0) {
+                temp[i + 1] = worldbuffer[offset] | p_buffer[i]
+                temp[i + 2] = worldbuffer[offset + 1] | p_buffer[i + 1]
+            } else {
+                let a = worldbuffer[offset] >> x_low
+                let b = worldbuffer[offset + 1] << (8 - x_low)
+                temp[i + 1] = (p_buffer[i] | a | b) & 0xFF
+                a = worldbuffer[offset + 1] >> x_low
+                b = worldbuffer[offset + 2] << (8 - x_low)
+                temp[i + 2] = (p_buffer[i + 1] | a | b) & 0xFF
             }
         }
         pins.i2cWriteBuffer(I2C_ADDR, temp, false);
     }
+
+
     function showFrame() {
         if (!useBlink) {
             let temp = pins.createBuffer(19)
