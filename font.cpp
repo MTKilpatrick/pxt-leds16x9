@@ -5,7 +5,7 @@ using namespace pxt;
 #define PXT_CREATE_BUFFER(data, len) ManagedBuffer(data, len).leakData()
 #endif
 
-namespace leds9x16 {
+namespace leds16x9 {
     //%
     int getFontDataByte(int index) {
         if(index < 0 || index >= 475){
