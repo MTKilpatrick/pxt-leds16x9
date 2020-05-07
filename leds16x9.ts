@@ -506,6 +506,14 @@ namespace leds16x9 {
         frameClear()
         show()
     }
+    //% block="world: clear"
+    //% blockId=leds16x9_clear_world
+    //% advanced=true color=#4703c3
+    export function worldClear() {
+        if (worldbuffer.length !== 0) {
+            worldbuffer.fill(0)
+        }
+    }
 
 
     //% block="world: pixel x %x y %y $state"
@@ -954,7 +962,7 @@ namespace leds16x9 {
             let xc = (xb > xa) ? 1 : -1
             let mid = (y0 + y1) >> 1
             let a = dx << 1, p = a - dy, b = p - dy
-            worldPixel(xa, ya, true)
+            worldPixel(xa, ya, state)
             while (ya < yb) {
                 if ((p < 0) || ((p == 0) && (ya >= mid))) { p = p + a }
                 else { p = p + b; xa = xa + xc }
